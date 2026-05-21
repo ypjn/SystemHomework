@@ -4,6 +4,8 @@ import neu.YYZX.model.CareProject;
 import neu.YYZX.model.CareRecord;
 import neu.YYZX.model.Elderly;
 import neu.YYZX.model.NursingLevel;
+import neu.YYZX.model.SystemData;
+import neu.YYZX.model.User;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +17,7 @@ public class DataManager {
     private final ArrayList<CareProject> projects = new ArrayList<>();
     private final ArrayList<Elderly> elders = new ArrayList<>();
     private final ArrayList<CareRecord> records = new ArrayList<>();
+    private final ArrayList<User> users = new ArrayList<>();
     private int recordSeq = 1;
 
     private DataManager() {
@@ -40,6 +43,10 @@ public class DataManager {
         return records;
     }
 
+    public ArrayList<User> getUsers() {
+        return users;
+    }
+
     public int getRecordSeq() {
         return recordSeq;
     }
@@ -53,11 +60,66 @@ public class DataManager {
         projects.clear();
         elders.clear();
         records.clear();
+        users.clear();
         recordSeq = 1;
     }
 
-    public void initDefaultData() {
+    public void clearBusinessData() {
+        levels.clear();
+        projects.clear();
+        elders.clear();
+        records.clear();
+        recordSeq = 1;
+    }
+
+    public void applySystemData(SystemData data) {
         clearAll();
+        if (data.getLevels() != null) {
+            levels.addAll(data.getLevels());
+        }
+        if (data.getProjects() != null) {
+            projects.addAll(data.getProjects());
+        }
+        if (data.getElders() != null) {
+            elders.addAll(data.getElders());
+        }
+        if (data.getRecords() != null) {
+            records.addAll(data.getRecords());
+        }
+        if (data.getUsers() != null) {
+            users.addAll(data.getUsers());
+        }
+        recordSeq = data.getRecordSeq() > 0 ? data.getRecordSeq() : 1;
+    }
+
+    public SystemData toSystemData() {
+        SystemData data = new SystemData();
+        data.setLevels(new ArrayList<>(levels));
+        data.setProjects(new ArrayList<>(projects));
+        data.setElders(new ArrayList<>(elders));
+        data.setRecords(new ArrayList<>(records));
+        data.setUsers(new ArrayList<>(users));
+        data.setRecordSeq(recordSeq);
+        return data;
+    }
+
+    public void ensureDefaults() {
+        if (levels.isEmpty() && projects.isEmpty()) {
+            initDefaultData();
+        }
+        if (users.isEmpty()) {
+            initDefaultUsers();
+        }
+    }
+
+    public void initDefaultUsers() {
+        users.clear();
+        users.add(new User("admin", "admin", User.ROLE_ADMIN));
+        users.add(new User("nurse", "nurse", User.ROLE_NURSE));
+    }
+
+    public void initDefaultData() {
+        clearBusinessData();
 
         levels.add(new NursingLevel("ZL", "自理型",
                 "身体健康，生活完全自理，无须特殊护理，只需提供生活协助和膳食。",
@@ -131,6 +193,44 @@ public class DataManager {
 
     public static boolean containsElder(String id) {
         return getElderIndex(getInstance().elders, id) >= 0;
+    }
+
+    public static int getUserIndex(ArrayList<User> list, String username) {
+        for (int i = 0; i < list.size(); i++) {
+            if (list.get(i).getUsername().equalsIgnoreCase(username)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public static boolean containsUser(String username) {
+        return getUserIndex(getInstance().users, username) >= 0;
+    }
+
+    public User authenticate(String username, String password, String role) {
+        int idx = getUserIndex(users, username);
+        if (idx < 0) {
+            return null;
+        }
+        User user = users.get(idx);
+        if (!user.getPassword().equals(password)) {
+            return null;
+        }
+        if (!user.getRole().equalsIgnoreCase(role)) {
+            return null;
+        }
+        return user;
+    }
+
+    public int countAdmins() {
+        int count = 0;
+        for (User user : users) {
+            if (User.ROLE_ADMIN.equalsIgnoreCase(user.getRole())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public NursingLevel findLevelByCode(String code) {

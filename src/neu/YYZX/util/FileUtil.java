@@ -1,31 +1,67 @@
 package neu.YYZX.util;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import neu.YYZX.model.CareProject;
 import neu.YYZX.model.CareRecord;
 import neu.YYZX.model.Elderly;
 import neu.YYZX.model.NursingLevel;
+import neu.YYZX.model.SystemData;
+import neu.YYZX.model.User;
 import neu.YYZX.service.DataManager;
 
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayList;
 
 public class FileUtil {
     private static final String DATA_DIR = "data";
-    private static final String DATA_FILE = DATA_DIR + "/yiyang_data.txt";
+    private static final String JSON_FILE = DATA_DIR + "/yiyang_data.json";
+    private static final String LEGACY_FILE = DATA_DIR + "/yiyang_data.txt";
+
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .enable(SerializationFeature.INDENT_OUTPUT);
 
     public static void load(DataManager dm) {
-        File file = new File(DATA_FILE);
-        if (!file.exists()) {
-            dm.initDefaultData();
-            save(dm);
+        File jsonFile = new File(JSON_FILE);
+        File legacyFile = new File(LEGACY_FILE);
+
+        if (jsonFile.exists()) {
+            loadFromJson(dm, jsonFile);
             return;
         }
 
+        if (legacyFile.exists()) {
+            loadFromLegacyText(dm, legacyFile);
+            dm.ensureDefaults();
+            save(dm);
+            System.out.println("已将旧版文本数据迁移为 JSON 格式：" + JSON_FILE);
+            return;
+        }
+
+        dm.initDefaultData();
+        dm.initDefaultUsers();
+        save(dm);
+    }
+
+    private static void loadFromJson(DataManager dm, File file) {
+        try {
+            SystemData data = MAPPER.readValue(file, SystemData.class);
+            dm.applySystemData(data);
+            dm.ensureDefaults();
+            if (dm.getLevels().isEmpty() || dm.getUsers().isEmpty()) {
+                save(dm);
+            }
+        } catch (IOException e) {
+            System.out.println("JSON 数据加载失败，已恢复为默认数据：" + e.getMessage());
+            dm.initDefaultData();
+            dm.initDefaultUsers();
+            save(dm);
+        }
+    }
+
+    private static void loadFromLegacyText(DataManager dm, File file) {
         dm.clearAll();
         int maxRecordSeq = 0;
 
@@ -80,21 +116,23 @@ public class FileUtil {
                             dm.setRecordSeq(Integer.parseInt(parts[1]));
                         }
                         break;
+                    case "USER":
+                        if (parts.length >= 4) {
+                            dm.getUsers().add(new User(parts[1], parts[2], parts[3]));
+                        }
+                        break;
                     default:
                         break;
                 }
             }
         } catch (Exception e) {
-            System.out.println("数据文件加载失败，已恢复为默认业务数据。");
+            System.out.println("旧版文本数据加载失败：" + e.getMessage());
             dm.initDefaultData();
-            save(dm);
+            dm.initDefaultUsers();
             return;
         }
 
-        if (dm.getLevels().isEmpty() && dm.getProjects().isEmpty()) {
-            dm.initDefaultData();
-            save(dm);
-        } else if (maxRecordSeq > dm.getRecordSeq()) {
+        if (maxRecordSeq > dm.getRecordSeq()) {
             dm.setRecordSeq(maxRecordSeq);
         }
     }
@@ -106,59 +144,11 @@ public class FileUtil {
             return;
         }
 
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_FILE))) {
-            writer.write("META|" + dm.getRecordSeq());
-            writer.newLine();
-
-            for (NursingLevel level : dm.getLevels()) {
-                writer.write(String.join("|", "LEVEL",
-                        level.getCode(),
-                        level.getName(),
-                        level.getDescription(),
-                        level.getFrequency()));
-                writer.newLine();
-            }
-
-            for (CareProject project : dm.getProjects()) {
-                writer.write(String.join("|", "PROJECT",
-                        project.getCode(),
-                        project.getName(),
-                        project.getCategory(),
-                        project.getUnit(),
-                        String.valueOf(project.getPrice()),
-                        project.getCycle(),
-                        project.getRemark()));
-                writer.newLine();
-            }
-
-            for (Elderly elder : dm.getElders()) {
-                writer.write(String.join("|", "ELDER",
-                        elder.getId(),
-                        elder.getName(),
-                        String.valueOf(elder.getAge()),
-                        elder.getGender(),
-                        elder.getNursingLevelCode(),
-                        elder.getRoomNo()));
-                writer.newLine();
-            }
-
-            for (CareRecord record : dm.getRecords()) {
-                writer.write(String.join("|", "RECORD",
-                        record.getId(),
-                        record.getElderlyId(),
-                        record.getProjectCode(),
-                        record.getExecuteTime(),
-                        record.getNurseName(),
-                        nullToEmpty(record.getRemark())));
-                writer.newLine();
-            }
+        try {
+            MAPPER.writeValue(new File(JSON_FILE), dm.toSystemData());
         } catch (IOException e) {
-            System.out.println("数据保存失败：" + e.getMessage());
+            System.out.println("JSON 数据保存失败：" + e.getMessage());
         }
-    }
-
-    private static String nullToEmpty(String value) {
-        return value == null ? "" : value;
     }
 
     public static void persist() {
