@@ -4,6 +4,7 @@ import neu.YYZX.model.CareProject;
 import neu.YYZX.model.CareRecord;
 import neu.YYZX.model.Elderly;
 import neu.YYZX.model.NursingLevel;
+import neu.YYZX.model.User;
 import neu.YYZX.service.DataManager;
 import neu.YYZX.util.FileUtil;
 
@@ -25,12 +26,13 @@ public class AdminMenu {
         System.out.println("请输入密码：");
         String password = sc.next();
 
-        if (!userName.equalsIgnoreCase("admin") || !password.equalsIgnoreCase("admin")) {
-            System.out.println("登录失败！");
+        User user = dm.authenticate(userName, password, User.ROLE_ADMIN);
+        if (user == null) {
+            System.out.println("登录失败！账号、密码或角色不正确");
             return;
         }
 
-        System.out.println("登录成功！");
+        System.out.println("登录成功！欢迎，" + user.getUsername());
         adminLoop();
     }
 
@@ -43,7 +45,8 @@ public class AdminMenu {
             System.out.println("3---------养护项目管理(增删改)");
             System.out.println("4---------老人档案管理(增删改查)");
             System.out.println("5---------查询护理执行记录");
-            System.out.println("6---------返回主菜单");
+            System.out.println("6---------用户账号管理");
+            System.out.println("7---------返回主菜单");
             System.out.print("请选择：");
 
             int choice = readInt();
@@ -64,13 +67,14 @@ public class AdminMenu {
                     listRecords();
                     break;
                 case 6:
+                    userManageMenu();
+                    break;
+                case 7:
                     return;
                 default:
                     System.out.println("输入有误，请重新输入");
             }
         }
-        System.out.println("=========================");
-        System.out.println("=========================");
     }
 
     private void listLevels() {
@@ -338,6 +342,104 @@ public class AdminMenu {
                     r.getExecuteTime(), r.getNurseName(),
                     r.getRemark() == null ? "" : r.getRemark());
         }
+    }
+
+    private void userManageMenu() {
+        while (true) {
+            System.out.println();
+            System.out.println("---用户账号管理---");
+            System.out.println("1---------查询全部用户");
+            System.out.println("2---------添加用户");
+            System.out.println("3---------修改用户密码");
+            System.out.println("4---------删除用户");
+            System.out.println("5---------返回上级");
+            System.out.print("请选择：");
+            int choice = readInt();
+            switch (choice) {
+                case 1:
+                    listUsers();
+                    break;
+                case 2:
+                    addUser();
+                    break;
+                case 3:
+                    updateUserPassword();
+                    break;
+                case 4:
+                    deleteUser();
+                    break;
+                case 5:
+                    return;
+                default:
+                    System.out.println("输入有误，请重新输入");
+            }
+        }
+    }
+
+    private void listUsers() {
+        ArrayList<User> list = dm.getUsers();
+        if (list.isEmpty()) {
+            System.out.println("无信息，请添加后查询");
+            return;
+        }
+        System.out.println("账号\t角色");
+        for (User user : list) {
+            String roleName = User.ROLE_ADMIN.equalsIgnoreCase(user.getRole()) ? "管理员" : "护工";
+            System.out.printf("%s\t%s%n", user.getUsername(), roleName);
+        }
+    }
+
+    private void addUser() {
+        System.out.print("请输入账号：");
+        String username = sc.next();
+        if (DataManager.containsUser(username)) {
+            System.out.println("账号已存在，请重新输入");
+            return;
+        }
+        System.out.print("请输入密码：");
+        String password = sc.next();
+        System.out.print("请输入角色(admin/nurse)：");
+        String role = sc.next().toLowerCase();
+        if (!User.ROLE_ADMIN.equals(role) && !User.ROLE_NURSE.equals(role)) {
+            System.out.println("角色无效，请输入 admin 或 nurse");
+            return;
+        }
+        dm.getUsers().add(new User(username, password, role));
+        FileUtil.persist();
+        System.out.println("用户添加成功！");
+    }
+
+    private void updateUserPassword() {
+        System.out.print("请输入要修改的账号：");
+        String username = sc.next();
+        int idx = DataManager.getUserIndex(dm.getUsers(), username);
+        if (idx < 0) {
+            System.out.println("账号不存在，请重新输入");
+            return;
+        }
+        System.out.print("请输入新密码：");
+        String password = sc.next();
+        dm.getUsers().get(idx).setPassword(password);
+        FileUtil.persist();
+        System.out.println("密码修改成功！");
+    }
+
+    private void deleteUser() {
+        System.out.print("请输入要删除的账号：");
+        String username = sc.next();
+        int idx = DataManager.getUserIndex(dm.getUsers(), username);
+        if (idx < 0) {
+            System.out.println("账号不存在，请重新输入");
+            return;
+        }
+        User user = dm.getUsers().get(idx);
+        if (User.ROLE_ADMIN.equalsIgnoreCase(user.getRole()) && dm.countAdmins() <= 1) {
+            System.out.println("至少保留一名管理员，无法删除");
+            return;
+        }
+        dm.getUsers().remove(idx);
+        FileUtil.persist();
+        System.out.println("用户删除成功！");
     }
 
     private int readInt() {

@@ -4,6 +4,7 @@ import neu.YYZX.model.CareProject;
 import neu.YYZX.model.CareRecord;
 import neu.YYZX.model.Elderly;
 import neu.YYZX.model.NursingLevel;
+import neu.YYZX.model.User;
 import neu.YYZX.service.DataManager;
 import neu.YYZX.util.FileUtil;
 
@@ -29,13 +30,14 @@ public class NurseMenu {
         System.out.println("请输入密码：");
         String password = sc.next();
 
-        if (!userName.equalsIgnoreCase("nurse") || !password.equalsIgnoreCase("nurse")) {
-            System.out.println("登录失败！");
+        User user = dm.authenticate(userName, password, User.ROLE_NURSE);
+        if (user == null) {
+            System.out.println("登录失败！账号、密码或角色不正确");
             return;
         }
 
-        nurseName = userName;
-        System.out.println("登录成功！");
+        nurseName = user.getUsername();
+        System.out.println("登录成功！欢迎，" + nurseName);
         nurseLoop();
     }
 
